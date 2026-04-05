@@ -4,17 +4,38 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
     QPushButton, QListWidget, QListWidgetItem, QLabel,
     QRadioButton, QButtonGroup, QFileDialog, QMessageBox,
-    QScrollArea, QSizePolicy, QToolBar,
+    QScrollArea, QSizePolicy, QToolBar, QSlider,
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QPoint, pyqtSignal
 from PyQt6.QtGui import QColor, QIcon, QPixmap
 
 from models import Color, Action
 from pdf_parser import extract_colors
 from pdf_editor import apply_mapping
 from renderer import render_page
+from color_grouper import group_colors, find_group, transfer_actions, expand_mapping
 
 logger = logging.getLogger(__name__)
+
+
+class PreviewLabel(QLabel):
+    """QLabel subclass that emits color_picked(QPoint) when eyedropper is active."""
+
+    color_picked = pyqtSignal(QPoint)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._eyedropper_active = False
+
+    def set_eyedropper(self, active: bool) -> None:
+        self._eyedropper_active = active
+        cursor = Qt.CursorShape.CrossCursor if active else Qt.CursorShape.ArrowCursor
+        self.setCursor(cursor)
+
+    def mousePressEvent(self, event):
+        if self._eyedropper_active and event.button() == Qt.MouseButton.LeftButton:
+            self.color_picked.emit(event.pos())
+        super().mousePressEvent(event)
 
 
 class MainWindow(QMainWindow):
@@ -25,9 +46,11 @@ class MainWindow(QMainWindow):
 
         self._pdf_bytes: bytes | None = None
         self._colors: list[Color] = []
+        self._groups: dict[Color, list[Color]] = {}
         self._actions: dict[Color, Action] = {}
         self._current_page: int = 0
         self._total_pages: int = 0
+        self._current_pixmap: QPixmap | None = None
 
         self._build_ui()
 
@@ -43,6 +66,12 @@ class MainWindow(QMainWindow):
         btn_open.clicked.connect(self._open_pdf)
         toolbar.addWidget(btn_open)
         toolbar.addSeparator()
+
+        self._btn_pick = QPushButton("Pick Color")
+        self._btn_pick.setCheckable(True)
+        self._btn_pick.setEnabled(False)
+        self._btn_pick.clicked.connect(self._toggle_eyedropper)
+        toolbar.addWidget(self._btn_pick)
 
         self._btn_export = QPushButton("Export Layer")
         self._btn_export.setEnabled(False)
@@ -62,6 +91,22 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(panel)
 
         layout.addWidget(QLabel("<b>COLORS</b>"))
+
+        # Tolerance row
+        tol_row = QWidget()
+        tol_layout = QHBoxLayout(tol_row)
+        tol_layout.setContentsMargins(0, 0, 0, 0)
+        tol_layout.addWidget(QLabel("Tolerance:"))
+        self._slider_tolerance = QSlider(Qt.Orientation.Horizontal)
+        self._slider_tolerance.setRange(0, 50)
+        self._slider_tolerance.setValue(0)
+        tol_layout.addWidget(self._slider_tolerance)
+        self._tol_label = QLabel("0")
+        self._tol_label.setFixedWidth(24)
+        tol_layout.addWidget(self._tol_label)
+        self._slider_tolerance.valueChanged.connect(self._on_tolerance_changed)
+        layout.addWidget(tol_row)
+
         self._color_list = QListWidget()
         self._color_list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
         layout.addWidget(self._color_list)
@@ -88,11 +133,12 @@ class MainWindow(QMainWindow):
         panel = QWidget()
         layout = QVBoxLayout(panel)
 
-        self._preview_label = QLabel("Open a PDF to begin.")
+        self._preview_label = PreviewLabel("Open a PDF to begin.")
         self._preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._preview_label.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
+        self._preview_label.color_picked.connect(self._on_color_picked)
         scroll = QScrollArea()
         scroll.setWidget(self._preview_label)
         scroll.setWidgetResizable(True)
@@ -127,7 +173,8 @@ class MainWindow(QMainWindow):
             with open(path, 'rb') as f:
                 self._pdf_bytes = f.read()
             colors = extract_colors(self._pdf_bytes)
-            self._colors = sorted(colors, key=lambda c: (c.r, c.g, c.b))
+            self._groups = group_colors(colors, self._slider_tolerance.value())
+            self._colors = sorted(self._groups.keys(), key=lambda c: (c.r, c.g, c.b))
             self._actions = {c: Action.KEEP for c in self._colors}
             self._populate_color_list()
 
@@ -139,6 +186,7 @@ class MainWindow(QMainWindow):
 
             self._btn_apply.setEnabled(True)
             self._btn_export.setEnabled(True)
+            self._btn_pick.setEnabled(True)
 
             if not colors:
                 QMessageBox.information(
@@ -187,13 +235,52 @@ class MainWindow(QMainWindow):
         if not path.endswith('.pdf'):
             path += '.pdf'
         try:
-            result = apply_mapping(self._pdf_bytes, self._actions)
+            expanded = expand_mapping(self._groups, self._actions, Action.KEEP)
+            result = apply_mapping(self._pdf_bytes, expanded)
             with open(path, 'wb') as f:
                 f.write(result)
             QMessageBox.information(self, "Export Complete", f"Saved to:\n{path}")
         except Exception as exc:
             logger.exception("Failed to export PDF")
             QMessageBox.critical(self, "Export Error", str(exc))
+
+    def _on_tolerance_changed(self, value: int) -> None:
+        self._tol_label.setText(str(value))
+        if self._pdf_bytes is None:
+            return
+        raw_colors = {m for members in self._groups.values() for m in members}
+        new_groups = group_colors(raw_colors, value)
+        self._actions = transfer_actions(self._groups, new_groups, self._actions, Action.KEEP)
+        self._groups = new_groups
+        self._colors = sorted(self._groups.keys(), key=lambda c: (c.r, c.g, c.b))
+        self._populate_color_list()
+        self._refresh_preview()
+
+    def _toggle_eyedropper(self) -> None:
+        self._preview_label.set_eyedropper(self._btn_pick.isChecked())
+
+    def _on_color_picked(self, pos: QPoint) -> None:
+        if self._current_pixmap is None:
+            return
+        img = self._current_pixmap.toImage()
+        if pos.x() < 0 or pos.y() < 0 or pos.x() >= img.width() or pos.y() >= img.height():
+            return
+        qcolor = img.pixelColor(pos)
+        if not qcolor.isValid():
+            return
+        sampled = Color(qcolor.red(), qcolor.green(), qcolor.blue())
+        rep = find_group(sampled, self._groups)
+        if rep is None:
+            return
+        for i in range(self._color_list.count()):
+            item = self._color_list.item(i)
+            if item.data(Qt.ItemDataRole.UserRole) == rep:
+                self._color_list.clearSelection()
+                self._color_list.setCurrentItem(item)
+                self._color_list.scrollToItem(item)
+                break
+        self._btn_pick.setChecked(False)
+        self._preview_label.set_eyedropper(False)
 
     # ------------------------------------------------------------------
     # Helpers
@@ -223,8 +310,10 @@ class MainWindow(QMainWindow):
         if self._pdf_bytes is None:
             return
         try:
-            modified = apply_mapping(self._pdf_bytes, self._actions)
+            expanded = expand_mapping(self._groups, self._actions, Action.KEEP)
+            modified = apply_mapping(self._pdf_bytes, expanded)
             pixmap = render_page(modified, self._current_page)
+            self._current_pixmap = pixmap
             self._preview_label.setPixmap(pixmap)
             self._preview_label.resize(pixmap.size())
         except Exception as exc:
