@@ -1,4 +1,5 @@
 import logging
+import fitz  # PyMuPDF
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
     QPushButton, QListWidget, QListWidgetItem, QLabel,
@@ -130,7 +131,6 @@ class MainWindow(QMainWindow):
             self._actions = {c: Action.KEEP for c in self._colors}
             self._populate_color_list()
 
-            import fitz
             with fitz.open(stream=self._pdf_bytes, filetype='pdf') as doc:
                 self._total_pages = len(doc)
             self._current_page = 0
@@ -163,6 +163,7 @@ class MainWindow(QMainWindow):
         for item in selected:
             color: Color = item.data(Qt.ItemDataRole.UserRole)
             self._actions[color] = action
+        self._refresh_color_labels()
         self._refresh_preview()
 
     def _prev_page(self) -> None:
@@ -201,12 +202,22 @@ class MainWindow(QMainWindow):
     def _populate_color_list(self) -> None:
         self._color_list.clear()
         for color in self._colors:
-            item = QListWidgetItem(str(color))
+            item = QListWidgetItem(self._item_text(color))
             swatch = QPixmap(16, 16)
             swatch.fill(QColor(color.r, color.g, color.b))
             item.setIcon(QIcon(swatch))
             item.setData(Qt.ItemDataRole.UserRole, color)
             self._color_list.addItem(item)
+
+    def _item_text(self, color: Color) -> str:
+        labels = {Action.KEEP: "keep", Action.KEEP_BLACK: "→ black", Action.DELETE: "delete"}
+        return f"{color}  [{labels[self._actions[color]]}]"
+
+    def _refresh_color_labels(self) -> None:
+        for i in range(self._color_list.count()):
+            item = self._color_list.item(i)
+            color: Color = item.data(Qt.ItemDataRole.UserRole)
+            item.setText(self._item_text(color))
 
     def _refresh_preview(self) -> None:
         if self._pdf_bytes is None:
