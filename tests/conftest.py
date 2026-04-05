@@ -17,7 +17,7 @@ def make_pdf():
                 ProcSet=pikepdf.Array([pikepdf.Name('/PDF'), pikepdf.Name('/Text')]),
             ),
         )
-        pdf.pages.append(page_dict)
+        pdf.pages.append(pikepdf.Page(page_dict))
         buf = io.BytesIO()
         pdf.save(buf)
         return buf.getvalue()
