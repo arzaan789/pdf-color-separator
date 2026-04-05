@@ -23,8 +23,8 @@ def group_colors(colors: set[Color], tolerance: int) -> dict[Color, list[Color]]
     while unassigned:
         seed = unassigned[0]
         members = [c for c in unassigned if _distance(seed, c) <= tolerance]
-        for m in members:
-            unassigned.remove(m)
+        members_set = set(members)
+        unassigned = [c for c in unassigned if c not in members_set]
         rep = _centroid(members)
         groups[rep] = members
 
