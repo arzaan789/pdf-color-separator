@@ -46,24 +46,26 @@ jobs:
 
   build-linux:
     runs-on: ubuntu-22.04
-    container: python:3.11-slim-bullseye  # Debian 11, GLIBC 2.31, Python 3.11 pre-installed
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Install system dependencies
         run: |
-          apt-get update -q
-          DEBIAN_FRONTEND=noninteractive apt-get install -y \
+          sudo apt-get update -q
+          sudo apt-get install -y \
             libgl1 libglib2.0-0 \
-            libxkbcommon-x11-0 libdbus-1-3 libxcb-cursor0 \
-            zip
+            libxkbcommon-x11-0 libdbus-1-3 libxcb-cursor0
 
       - name: Install Python dependencies
         run: pip install -r requirements.txt pyinstaller
 
       - name: Build executable
         run: |
-          python -m PyInstaller --windowed \
+          pyinstaller --windowed \
             --name "PDF Color Separator" \
             --collect-all PyQt6 \
             --collect-all fitz \
