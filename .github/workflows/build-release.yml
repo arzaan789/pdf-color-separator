@@ -32,11 +32,31 @@ jobs:
             --collect-all PyQt6 \
             --collect-all fitz \
             --collect-all pikepdf \
+            --noupx \
             --paths src \
             src/main.py
 
+      - name: Fix pikepdf .dylibs layout and ad-hoc sign .app
+        run: |
+          APP="dist/PDF Color Separator.app"
+          # pikepdf vendors qpdf into a hidden .dylibs/ dir (wheel convention).
+          # codesign mistakes it for a nested bundle and aborts. Rename it and
+          # patch the @rpath so the extension module still finds its libraries.
+          find "$APP" -type d -name ".dylibs" | while IFS= read -r dir; do
+            newdir="$(dirname "$dir")/dylibs"
+            mv "$dir" "$newdir"
+            parent="$(dirname "$newdir")"
+            find "$parent" -maxdepth 1 \( -name "*.so" -o -name "*.dylib" \) | while IFS= read -r lib; do
+              install_name_tool -rpath "@loader_path/.dylibs" "@loader_path/dylibs" "$lib" 2>/dev/null || true
+            done
+          done
+          # Sign all bundled binaries individually, then sign the app bundle.
+          find "$APP" -type f \( -name "*.dylib" -o -name "*.so" \) \
+            -exec codesign --force --sign - {} \;
+          codesign --force --sign - "$APP"
+
       - name: Zip .app
-        run: cd dist && zip -r ../PDF_Color_Separator_macOS.zip "PDF Color Separator.app"
+        run: ditto -c -k --sequesterRsrc --keepParent "dist/PDF Color Separator.app" PDF_Color_Separator_macOS.zip
 
       - name: Upload to release
         if: startsWith(github.ref, 'refs/tags/')
