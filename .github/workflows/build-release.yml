@@ -1,0 +1,79 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pyinstaller
+
+      - name: Build .app
+        run: |
+          pyinstaller --windowed \
+            --name "PDF Color Separator" \
+            --collect-all PyQt6 \
+            --collect-all fitz \
+            --collect-all pikepdf \
+            --paths src \
+            src/main.py
+
+      - name: Zip .app
+        run: cd dist && zip -r ../PDF_Color_Separator_macOS.zip "PDF Color Separator.app"
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: PDF_Color_Separator_macOS.zip
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y \
+            libgl1 libglib2.0-0 \
+            libxkbcommon-x11-0 \
+            libdbus-1-3 \
+            libxcb-cursor0
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pyinstaller
+
+      - name: Build executable
+        run: |
+          pyinstaller --windowed \
+            --name "PDF Color Separator" \
+            --collect-all PyQt6 \
+            --collect-all fitz \
+            --collect-all pikepdf \
+            --paths src \
+            src/main.py
+
+      - name: Zip executable
+        run: cd dist && zip -r ../PDF_Color_Separator_Linux.zip "PDF Color Separator"
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: PDF_Color_Separator_Linux.zip

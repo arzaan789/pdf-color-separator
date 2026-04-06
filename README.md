@@ -1,12 +1,17 @@
 # PDF Color Separator
 
-A macOS desktop app for **RISO printing color separation**. Open a multi-color PDF, assign each ink color an action (keep as black, delete, or keep as-is), preview the result live, and export one PDF per ink layer.
+A desktop app for **RISO printing color separation**. Open a multi-color PDF, assign each ink color an action (keep as black, delete, or keep as-is), preview the result live, and export one PDF per ink layer.
 
-![PDF Color Separator screenshot placeholder]
+Works on **macOS and Linux**. No Python installation required — download the pre-built binary from Releases.
 
 ## Download
 
-Download the latest `.app` from the [Releases](../../releases) page. Unzip and drag to your Applications folder.
+Go to the [Releases](../../releases) page and download the file for your platform:
+
+| Platform | File |
+|----------|------|
+| macOS | `PDF_Color_Separator_macOS.zip` → unzip → drag `.app` to Applications |
+| Linux | `PDF_Color_Separator_Linux.zip` → unzip → run the executable |
 
 > **macOS note:** On first launch, right-click the app and choose **Open** to bypass the Gatekeeper warning (the app is not notarized).
 
@@ -35,21 +40,28 @@ Download the latest `.app` from the [Releases](../../releases) page. Unzip and d
 
 ## Run from source
 
+Works on macOS, Linux, and Windows.
+
 ```bash
 git clone https://github.com/arzaan789/pdf-color-separator.git
 cd pdf-color-separator
 python -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 python src/main.py
 ```
 
-**Requirements:** Python 3.11+, macOS (cross-platform capable)
+**Requirements:** Python 3.11+
 
-## Build the app yourself
+## Build the binary yourself
+
+Binaries are built automatically on every release via GitHub Actions (`.github/workflows/build-release.yml`). To build locally:
 
 ```bash
 pip install pyinstaller
-pyinstaller PDF\ Color\ Separator.spec
-# Output: dist/PDF Color Separator.app
+pyinstaller --windowed --name "PDF Color Separator" \
+  --collect-all PyQt6 --collect-all fitz --collect-all pikepdf \
+  --paths src src/main.py
+# Output: dist/PDF Color Separator.app  (macOS)
+#         dist/PDF Color Separator/      (Linux)
 ```
