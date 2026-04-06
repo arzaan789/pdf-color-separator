@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
     QRadioButton, QButtonGroup, QFileDialog, QMessageBox,
     QScrollArea, QSizePolicy, QToolBar, QSlider,
 )
-from PyQt6.QtCore import Qt, QPoint, pyqtSignal
+from PyQt6.QtCore import Qt, QPoint, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QIcon, QPixmap
 
 from models import Color, Action
@@ -51,6 +51,9 @@ class MainWindow(QMainWindow):
         self._current_page: int = 0
         self._total_pages: int = 0
         self._current_pixmap: QPixmap | None = None
+        self._tolerance_timer = QTimer()
+        self._tolerance_timer.setSingleShot(True)
+        self._tolerance_timer.timeout.connect(self._apply_tolerance)
 
         self._build_ui()
 
@@ -246,10 +249,14 @@ class MainWindow(QMainWindow):
 
     def _on_tolerance_changed(self, value: int) -> None:
         self._tol_label.setText(str(value))
-        if self._pdf_bytes is None:
-            return
+        if self._pdf_bytes is not None:
+            self._tolerance_timer.start(250)  # debounce — regroup after slider stops
+
+    def _apply_tolerance(self) -> None:
+        # Pass old self._groups to transfer_actions BEFORE overwriting it,
+        # so it can match old members to new representatives for action transfer.
         raw_colors = {m for members in self._groups.values() for m in members}
-        new_groups = group_colors(raw_colors, value)
+        new_groups = group_colors(raw_colors, self._slider_tolerance.value())
         self._actions = transfer_actions(self._groups, new_groups, self._actions, Action.KEEP)
         self._groups = new_groups
         self._colors = sorted(self._groups.keys(), key=lambda c: (c.r, c.g, c.b))
