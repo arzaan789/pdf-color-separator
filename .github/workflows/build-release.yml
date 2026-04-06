@@ -46,28 +46,27 @@ jobs:
 
   build-linux:
     runs-on: ubuntu-22.04
+    container: ubuntu:20.04   # GLIBC 2.31 — binary works on Ubuntu 20+, Debian 11+, Fedora 35+
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
       - name: Install system dependencies
         run: |
-          sudo apt-get update -q
-          sudo apt-get install -y \
-            libgl1 libglib2.0-0 \
+          apt-get update -q
+          DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            python3.9 python3.9-venv python3-pip \
+            libgl1-mesa-glx libglib2.0-0 \
             libxkbcommon-x11-0 \
             libdbus-1-3 \
-            libxcb-cursor0
+            libxcb-cursor0 \
+            zip
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt pyinstaller
+      - name: Install Python dependencies
+        run: pip3 install -r requirements.txt pyinstaller
 
       - name: Build executable
         run: |
-          pyinstaller --windowed \
+          python3 -m PyInstaller --windowed \
             --name "PDF Color Separator" \
             --collect-all PyQt6 \
             --collect-all fitz \
