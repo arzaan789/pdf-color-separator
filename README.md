@@ -11,7 +11,7 @@ Go to the [Releases](../../releases) page and download the file for your platfor
 | Platform | File |
 |----------|------|
 | macOS | `PDF_Color_Separator_macOS.zip` → unzip → drag `.app` to Applications |
-| Linux | `PDF_Color_Separator_Linux.AppImage` → `chmod +x` → double-click or run from terminal |
+| Linux | `PDF_Color_Separator_Linux.zip` → unzip → run the `PDF Color Separator` executable |
 
 > **macOS note:** On first launch, right-click the app and choose **Open** to bypass the Gatekeeper warning (the app is not notarized).
 
